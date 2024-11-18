@@ -9,6 +9,7 @@ from basethon.base_thon import BaseThon
 from basethon.base_session import BaseSession
 from basethon.json_converter import JsonConverter
 from telethon import functions
+from telethon import TelegramClient, functions, sync
 from telethon.errors import FloodWaitError
 from console import console
 
@@ -89,9 +90,9 @@ class TelegramSearch(BaseThon):
     
         for item, json_file, json_data in self.__get_sessions_and_users():
             r = await self.check()
-            print(r)
             if "OK" not in r:
                 console.log("Аккаунт забанен", style="red")
+                return
             await self._search_chats(names, endings)
         return True
 
@@ -146,13 +147,88 @@ def get_settings():
             return json.loads(f.read())
     except:
         return {}
+    
+def load_file(filename):
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            data = f.read().splitlines()
+            if not data:  # Проверка на пустоту файла
+                raise ValueError(f"Файл {filename} пуст.")
+            return data
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Файл {filename} не найден.")
+    except Exception as e:
+        raise e
 
 
-if __name__ == "__main__":
+def main(settings):
+    try:
+
+        # Проверка наличия файлов
+        if not os.path.exists("names.txt") or not os.path.exists("endings.txt"):
+            print("Файлы names.txt и endings.txt не найдены.")
+            return
+
+        # Загрузка файлов names и endings
+        try:
+            names = load_file("names.txt")
+            endings = load_file("endings.txt")
+        except ValueError:
+            print("Вы не заполнили или забыли сохранить файлы names и endings, я не могу начать парсинг без этого.")
+            return
+
+        client = TelegramClient("getchats", settings["API_ID"], settings["API_HASH"])
+        client.start()
+
+        old = []
+        with open("output.txt", "w", encoding="utf-8") as file:
+            print("Запуск скрипта...")
+            for title in names:
+                for end in endings:
+                    name = title + end
+                    print("Подбираются чаты, найденные по имени: ", name)
+                    name = name.lower()
+                    try:
+                        request = client(functions.contacts.SearchRequest(q=name, limit=10))
+                    except Exception as e:
+                        if "A wait of" in str(e):
+                            wait_time = int("".join(filter(str.isdigit, str(e))))
+                            print(f"Ваш аккаунт ушел в мут на {wait_time} секунд.")
+                            print("Удалите файл session и запустите скрипт заново, используя другой аккаунт, или дождитесь конца мута.")
+                            return
+                        else:
+                            raise e
+                    for channel in request.chats:
+                        if channel.megagroup:
+                            username = (
+                                channel.username.lower() if channel.username is not None else ""
+                            )
+                            if username not in old:
+                                if channel.title not in old:
+                                    print(f"Найден чат: t.me/{channel.username}")
+                                    file.write(f"t.me/{channel.username}\n")
+                                    old.append(channel.username)
+                                    print("Найден чат с подобранным именем: ", channel.title)
+        print("Скрипт завершил свою работу...")
+
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+    finally:
+        input("Для завершения работы скрипта нажмите Enter.")
+
+
+
+def _main():
     settings = get_settings()  # Инициализация настроек
+    # Откомментировать  
     # register_user(settings)  # Передача настроек в функцию
-
-    item = "session"
+    base_session = Path('getchats.session')
+    basethon_session = Path('session.session')
+    if not base_session.exists() and not basethon_session.exists()\
+          or base_session.exists() and not basethon_session.exists():
+        console.log(f"Файл getchats.session или session.session не найдены.", style='yellow')
+        main(settings)
+        return
     sessions_count = JsonConverter().main()
     if not sessions_count:
         console.log("Нет аккаунтов в папке с сессиями!", style="yellow")
@@ -167,7 +243,11 @@ if __name__ == "__main__":
         json_data = {}
 
     try:
-        telegram_search = TelegramSearch(item, json_data)
+        telegram_search = TelegramSearch('session', json_data)
         asyncio.run(telegram_search.main())
     except Exception as e:
         console.log(f"Ошибка запуска: {e}", style="red")
+
+
+if __name__ == "__main__":
+    _main()
