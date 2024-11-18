@@ -1,0 +1,1 @@
+cmd /k "poetry install --no-root & .venv\Scripts\activate & python compile.py"
