@@ -40,14 +40,17 @@ class TelegramSearch(BaseThon):
 
     @staticmethod
     def _load_file(filename: str) -> List[str]:
-        file_path = Path(filename)
-        if not file_path.exists():
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                data = f.read().splitlines()
+                if not data:
+                    raise ValueError(f"Файл {filename} пуст.")
+                return data
+        except FileNotFoundError:
             raise FileNotFoundError(f"Файл {filename} не найден.")
-        with file_path.open("r", encoding="utf-8") as f:
-            data = [line.strip() for line in f if line.strip()]
-            if not data:
-                raise ValueError(f"Файл {filename} пуст.")
-            return data
+        except Exception as e:
+            raise e
+
 
     async def _search_chats(self, names: List[str], endings: List[str]):
         self.output_file.unlink(missing_ok=True)
@@ -103,7 +106,7 @@ def set_settings(data):
 
 
 def register_user(settings):
-    print("Связываемся с сервером...")
+    console.log("Связываемся с сервером...")
     current_machine_id = (
         str(subprocess.check_output("wmic csproduct get uuid"), "utf-8")
         .split("\n")[1]
@@ -119,10 +122,10 @@ def register_user(settings):
     )
     db_id = db_id.json()
     if db_id.get("message"):
-        print("Неправильный логин")
+        console.log("Неправильный логин")
         sys.exit()
     file_key = settings.get("ACCESS_KEY")
-    print(f"Ваш ID в системе: {db_id['id']}")
+    console.log(f"Ваш ID в системе: {db_id['id']}")
     if file_key:
         key = file_key
     else:
@@ -133,12 +136,12 @@ def register_user(settings):
             data={"pk": current_machine_id, "key": key},
         ).json()["message"]
         if is_correct:
-            print("Вход успешно выполнен!")
+            console.log("Вход успешно выполнен!")
             settings["ACCESS_KEY"] = key
             set_settings(settings)
             return
         else:
-            print("Неправильный ключ!")
+            console.log("Неправильный ключ!")
             key = input("Введите ваш ключ доступа: ")
 
 def get_settings():
@@ -152,7 +155,7 @@ def load_file(filename):
     try:
         with open(filename, "r", encoding="utf-8") as f:
             data = f.read().splitlines()
-            if not data:  # Проверка на пустоту файла
+            if not data:
                 raise ValueError(f"Файл {filename} пуст.")
             return data
     except FileNotFoundError:
@@ -163,18 +166,14 @@ def load_file(filename):
 
 def main(settings):
     try:
-
-        # Проверка наличия файлов
         if not os.path.exists("names.txt") or not os.path.exists("endings.txt"):
-            print("Файлы names.txt и endings.txt не найдены.")
+            console.log("Файлы names.txt и endings.txt не найдены.")
             return
-
-        # Загрузка файлов names и endings
         try:
             names = load_file("names.txt")
             endings = load_file("endings.txt")
         except ValueError:
-            print("Вы не заполнили или забыли сохранить файлы names и endings, я не могу начать парсинг без этого.")
+            console.log("Вы не заполнили или забыли сохранить файлы names и endings, я не могу начать парсинг без этого.")
             return
 
         client = TelegramClient("getchats", settings["API_ID"], settings["API_HASH"])
@@ -182,19 +181,19 @@ def main(settings):
 
         old = []
         with open("output.txt", "w", encoding="utf-8") as file:
-            print("Запуск скрипта...")
+            console.log("Запуск скрипта...")
             for title in names:
                 for end in endings:
                     name = title + end
-                    print("Подбираются чаты, найденные по имени: ", name)
+                    console.log("Подбираются чаты, найденные по имени: ", name)
                     name = name.lower()
                     try:
                         request = client(functions.contacts.SearchRequest(q=name, limit=10))
                     except Exception as e:
                         if "A wait of" in str(e):
                             wait_time = int("".join(filter(str.isdigit, str(e))))
-                            print(f"Ваш аккаунт ушел в мут на {wait_time} секунд.")
-                            print("Удалите файл session и запустите скрипт заново, используя другой аккаунт, или дождитесь конца мута.")
+                            console.log(f"Ваш аккаунт ушел в мут на {wait_time} секунд.")
+                            console.log("Удалите файл session и запустите скрипт заново, используя другой аккаунт, или дождитесь конца мута.")
                             return
                         else:
                             raise e
@@ -205,23 +204,22 @@ def main(settings):
                             )
                             if username not in old:
                                 if channel.title not in old:
-                                    print(f"Найден чат: t.me/{channel.username}")
+                                    console.log(f"Найден чат: t.me/{channel.username}")
                                     file.write(f"t.me/{channel.username}\n")
                                     old.append(channel.username)
-                                    print("Найден чат с подобранным именем: ", channel.title)
-        print("Скрипт завершил свою работу...")
+                                    console.log("Найден чат с подобранным именем: ", channel.title)
+        console.log("Скрипт завершил свою работу...")
 
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        console.log(f"Произошла ошибка: {e}")
     finally:
         input("Для завершения работы скрипта нажмите Enter.")
 
 
 
 def _main():
-    settings = get_settings()  # Инициализация настроек
-    # Откомментировать  
-    # register_user(settings)  # Передача настроек в функцию
+    settings = get_settings()
+    register_user(settings)
     base_session = Path('getchats.session')
     basethon_session = Path('session.session')
     if not base_session.exists() and not basethon_session.exists()\
